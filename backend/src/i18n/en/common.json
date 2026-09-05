@@ -1,0 +1,12 @@
+{
+  "SUCCESS": {
+    "CREATED": "Operation completed successfully.",
+    "UPDATED": "Changes saved successfully.",
+    "DELETED": "Resource removed successfully."
+  },
+  "ERROR": {
+    "NOT_FOUND": "The requested resource was not found.",
+    "FORBIDDEN": "You do not have permission to perform this action.",
+    "INTERNAL": "An unexpected server error occurred. Our engineers are notified."
+  }
+}

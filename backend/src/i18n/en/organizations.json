@@ -1,0 +1,12 @@
+{
+  "ERROR": {
+    "LOCKDOWN_ACTIVE": "Organization '{orgName}' is currently in Emergency Lockdown. All session and API access is suspended by the administrator.",
+    "NOT_FOUND": "The requested organization could not be identified.",
+    "FORBIDDEN": "Organization-wide access rejected."
+  },
+  "SUCCESS": {
+    "LOCKDOWN_TRIGGERED": "Emergency Lockdown initiated in under 1 second.",
+    "SANDBOX_CREATED": "Isolated developer sandbox cloned successfully.",
+    "RE_SHARDED": "Physical data migration complete (Zero-Downtime)."
+  }
+}

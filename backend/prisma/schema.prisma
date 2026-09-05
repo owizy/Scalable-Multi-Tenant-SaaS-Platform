@@ -1,0 +1,361 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  MEMBER
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  // Phase 4: Billing
+  stripeCustomerId String? @unique
+  subscriptionStatus SubscriptionStatus @default(TRIALING)
+  subscriptionTier SubscriptionTier @default(FREE)
+  subscriptionId String? @unique
+
+  users          User[]
+  projects       Project[]
+  auditLogs      AuditLog[]
+  invites        Invite[]
+  roles          Role[]
+  featureFlags   FeatureFlag[]
+  apiKeys        ApiKey[]
+  webhooks       WebhookEndpoint[]
+  
+  settings       Json?    @default("{}") // Custom branding, timezones, etc.
+  allowedIPs        String[] @default([])
+  whitelistedDomains String[] @default([])
+
+  // Phase 5: Hierarchies and Enterprise
+  parentId          String?
+  parent            Organization? @relation("OrgHierarchy", fields: [parentId], references: [id])
+  children          Organization[] @relation("OrgHierarchy")
+
+  // Phase 5: Security and SIEM
+  kmsKeyArn         String?
+  siemWebhookUrl    String?
+
+  // Phase 6: White-Label and Multi-Region
+  customDomain      String? @unique
+  customDomainStatus DomainStatus @default(PENDING)
+  storageRegion     String @default("us-east-1")
+
+  // Phase 7: Whitelabel and Multi-Channel
+  brandColorPrimary   String?
+  brandColorSecondary String?
+  logoUrl             String?
+  slackWebhookUrl     String?
+
+  // Phase 9: Hard-Limits and Quotas
+  apiCallsThisMonth    Int      @default(0)
+
+  // Phase 10: Elite B2B Network and Compliance
+  isVerified           Boolean  @default(false)
+  verificationRef      String?
+
+  // Phase 11: Sovereignty and Predictive AI
+  databaseUrl          String?  // Dedicated DB for physical isolation
+  isFrozen             Boolean  @default(false)
+  frozenAt             DateTime?
+
+  // Phase 12: Zero-Downtime Scaling and Maintenance Windows
+  maintenanceWindowDay String?  // e.g., 'SUNDAY'
+  maintenanceWindowHour Int?    // 0-23
+  migrationStatus      MigrationStatus @default(IDLE)
+
+  // Phase 13: Final Compliance and Dev Ecosystem
+  isLegalHoldActive    Boolean  @default(false)
+  legalHoldRef         String?
+  isSandbox            Boolean  @default(false)
+
+  // Phase 14: Final Sovereignty and Emergency Security
+  isLocked             Boolean  @default(false)
+  lockedAt             DateTime?
+  regionGroup          RegionGroup @default(US)
+
+  @@map("organizations")
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  INCOMPLETE
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum DomainStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum MigrationStatus {
+  IDLE
+  COPYING
+  SYNCING
+  COMPLETED
+}
+
+enum RegionGroup {
+  US
+  EU
+  ASIA
+}
+
+model FeatureFlag {
+  id             String       @id @default(uuid())
+  key            String       
+  isEnabled      Boolean      @default(false)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  isTrial        Boolean      @default(false)
+  trialExpiresAt DateTime?
+
+  @@unique([key, organizationId])
+  @@map("feature_flags")
+}
+
+model SubscriptionPlan {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  stripePriceId String   @unique
+  tier          SubscriptionTier
+  maxProjects   Int      @default(5)
+  maxUsers      Int      @default(10)
+  
+  @@map("subscription_plans")
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  password        String
+  firstName       String?
+  lastName        String?
+  role            UserRole       @default(MEMBER)
+  isActive        Boolean        @default(true)
+  isEmailVerified Boolean        @default(false)
+  phoneNumber     String?        @unique
+  
+  twoFactorSecret String?
+  isTwoFactorEnabled Boolean      @default(false)
+  
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+
+  projectsOwned   Project[]
+  auditLogs       AuditLog[]
+  refreshTokens   RefreshToken[]
+  invitesSent     Invite[]       @relation("InvitesSent")
+  
+  // Custom Roles (Phase 2)
+  userRoles       UserRoleMapping[]
+  apiKeys         ApiKey[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+  
+  preferredLanguage String? @default("en")
+
+  @@map("users")
+}
+
+model Role {
+  id             String         @id @default(uuid())
+  name           String
+  description    String?
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  
+  permissions    Permission[]
+  users          UserRoleMapping[]
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([name, organizationId])
+  @@map("roles")
+}
+
+model Permission {
+  id        String   @id @default(uuid())
+  action    String   // e.g., "read", "manage"
+  resource  String   // e.g., "Project", "User", "all"
+  
+  roles     Role[]
+
+  @@unique([action, resource])
+  @@map("permissions")
+}
+
+model UserRoleMapping {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_role_mappings")
+}
+
+model Invite {
+  id             String       @id @default(uuid())
+  email          String
+  token          String       @unique
+  role           UserRole     @default(MEMBER)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  invitedById    String
+  invitedBy      User         @relation("InvitesSent", fields: [invitedById], references: [id])
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@unique([email, organizationId])
+  @@map("invites")
+}
+
+model Project {
+  id             String        @id @default(uuid())
+  name           String
+  description    String?
+  status         ProjectStatus @default(DRAFT)
+
+  ownerId        String
+  owner          User          @relation(fields: [ownerId], references: [id])
+
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  // Phase 9: Semantic Search
+  embedding      Unsupported("vector(1536)")?
+
+  // Phase 10: Cross-Tenant Sharing
+  sharedWithOrgId      String?
+  isShared             Boolean  @default(false)
+
+  // Phase 11: Predictive Analytics
+  riskScore            Int      @default(0) // 0-100
+
+  // Phase 14: AI Emotional Intelligence
+  teamEnergyScore      Int      @default(100)
+
+  @@map("projects")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  action         String
+  resource       String
+  resourceId     String?
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  details        Json?
+  timestamp      DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model ApiKey {
+  id             String       @id @default(uuid())
+  keyHash        String       @unique
+  name           String
+  description    String?
+  lastUsed       DateTime?
+  expiresAt      DateTime?
+  isActive       Boolean      @default(true)
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id])
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("api_keys")
+}
+
+model WebhookEndpoint {
+  id             String       @id @default(uuid())
+  url            String
+  name           String?
+  secret         String       // Secret for HMAC signing
+  isActive       Boolean      @default(true)
+  events         String[]     // E.g., ['project.created', 'user.invited']
+  
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  
+  deliveries     WebhookDelivery[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id                String          @id @default(uuid())
+  webhookEndpointId String
+  webhookEndpoint   WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id])
+  
+  event             String
+  payload           Json
+  responseStatus    Int?
+  responseBody      String?
+  isSuccess         Boolean         @default(false)
+  
+  createdAt         DateTime        @default(now())
+
+  @@map("webhook_deliveries")
+}

@@ -1,0 +1,12 @@
+{
+  "ERROR": {
+    "NOT_FOUND": "The requested project could not be found.",
+    "FORBIDDEN_READ": "Access to this project is restricted for your role.",
+    "FORBIDDEN_UPDATE": "You are not authorized to modify this project shard."
+  },
+  "SUCCESS": {
+    "CREATED": "Project instantiated successfully.",
+    "UPDATED": "Project shard updated.",
+    "DELETED": "Project wiped from the core."
+  }
+}

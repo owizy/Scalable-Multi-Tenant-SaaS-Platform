@@ -1,0 +1,63 @@
+replicaCount: 3
+
+image:
+  backendRepository: multi-tenant-backend
+  frontendRepository: multi-tenant-frontend
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+backend:
+  port: 4000
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+frontend:
+  port: 3000
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: api.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: backend
+              port: 4000
+    - host: app.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: frontend
+              port: 3000
+  tls:
+    - secretName: multi-tenant-tls
+      hosts:
+        - api.example.com
+        - app.example.com

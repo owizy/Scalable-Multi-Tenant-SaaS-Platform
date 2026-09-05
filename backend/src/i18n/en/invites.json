@@ -1,0 +1,13 @@
+{
+  "ERROR": {
+    "ALREADY_MEMBER": "User with this email is already a member of an organization.",
+    "PENDING_EXISTS": "A pending invite already exists for this email.",
+    "INVALID_TOKEN": "Invalid invite token identified.",
+    "EXPIRED": "Invite token has expired or was revoked.",
+    "ALREADY_ACCEPTED": "Invite has already been accepted and processed."
+  },
+  "SUCCESS": {
+    "SENT": "Invite sent successfully. Global access propagated.",
+    "VALIDATED": "Invite token validated."
+  }
+}

@@ -1,0 +1,211 @@
+name: Continuous Integration & Security Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  dependency-review:
+    name: Dependency Review & License Check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  backend-ci:
+    name: Backend CI (NestJS)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('backend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Prisma Generate
+        working-directory: ./backend
+        run: npx prisma generate
+
+      - name: Typecheck & Lint
+        working-directory: ./backend
+        run: pnpm run lint
+
+      - name: Run Unit & E2E Tests
+        working-directory: ./backend
+        run: pnpm run test
+
+      - name: Build Backend
+        working-directory: ./backend
+        run: pnpm run build
+
+  frontend-ci:
+    name: Frontend CI (Next.js)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Lint Frontend
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Build Next.js Application
+        working-directory: ./frontend
+        run: npm run build
+
+  migration-check:
+    name: Zero-Downtime Prisma Migration Verification
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: ci_migration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install Dependencies
+        working-directory: ./backend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Migration Status & Schema Verification
+        working-directory: ./backend
+        env:
+          DATABASE_URL: "postgresql://postgres:postgrespassword@localhost:5432/ci_migration_test?schema=public"
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy
+          npx prisma migrate status
+
+  security-audit:
+    name: SAST, Secret Scanning & Vulnerability Audit (Trivy)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy FS & Secret Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scanners: 'vuln,secret,config'
+          ignore-unfixed: true
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+  sonarqube-scan:
+    name: SonarQube Quality Gate & Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v2.0.2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=multi_tenant_saas
+            -Dsonar.sources=backend/src,frontend/src
+            -Dsonar.exclusions=**/node_modules/**,**/*.spec.ts,**/.next/**
+
+  veracode-sast:
+    name: Veracode SAST Security Pipeline Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Veracode Pipeline Scan
+        uses: veracode/veracode-pipeline-scan-action@v1.0.1
+        with:
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
+          file: 'backend/dist'
+          fail_build: false
+
+  docker-build:
+    name: Container Build Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Container
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: multi-tenant-backend:latest
